@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 import os
 
 import pcbnew
@@ -92,6 +93,22 @@ def _selected_straight_track(board):
     if len(tracks) != 1 or len(selected_copper_items) != 1:
         raise ConnectorError("Select exactly one straight track segment.")
     return tracks[0]
+
+
+def _selected_line_and_arc(board):
+    items = _selected_tracks(board)
+    lines = [
+        item
+        for item in items
+        if isinstance(item, pcbnew.PCB_TRACK)
+        and not isinstance(item, pcbnew.PCB_ARC)
+    ]
+    arcs = [item for item in items if isinstance(item, pcbnew.PCB_ARC)]
+    if len(lines) != 1 or len(arcs) != 1:
+        raise ConnectorError(
+            "Select exactly one straight track segment and one track arc."
+        )
+    return lines[0], arcs[0]
 
 
 def _endpoint_to_move(track: TrackGeometry, target: geo.Point) -> str:
@@ -207,6 +224,60 @@ def draw_tangent_arc(center_x_mm: float, center_y_mm: float, angle_degrees: floa
     arc.SetWidth(item.GetWidth())
     arc.SetNetCode(item.GetNetCode())
     board.Add(arc)
+
+    board.BuildConnectivity()
+    pcbnew.Refresh()
+
+
+def make_line_tangent_to_arc() -> None:
+    board = pcbnew.GetBoard()
+    if board is None:
+        raise ConnectorError("No board is open.")
+    line_item, arc_item = _selected_line_and_arc(board)
+    line = _track_geometry(line_item)
+    arc = _track_geometry(arc_item)
+
+    solution = geo.line_arc_tangent(
+        line.support, arc.support, arc.start, arc.end
+    )
+    if solution is None:
+        raise ConnectorError(
+            "No tangent exists because the fixed end of the straight track "
+            "is inside the arc's circle."
+        )
+
+    if solution.line_endpoint == "start":
+        line_item.SetStart(_vector(solution.point))
+    else:
+        line_item.SetEnd(_vector(solution.point))
+
+    # Determine the original sweep directly: the midpoint lies on either the
+    # counterclockwise or clockwise path from start to end.
+    start_angle = math.atan2(
+        arc.start.y - arc.support.center.y,
+        arc.start.x - arc.support.center.x,
+    )
+    mid_angle = math.atan2(
+        arc.mid.y - arc.support.center.y,
+        arc.mid.x - arc.support.center.x,
+    )
+    end_angle = math.atan2(
+        arc.end.y - arc.support.center.y,
+        arc.end.x - arc.support.center.x,
+    )
+    original_clockwise = (
+        (mid_angle - start_angle) % geo.TAU
+        > (end_angle - start_angle) % geo.TAU + geo.EPS
+    )
+
+    new_start = solution.point if solution.arc_endpoint == "start" else arc.start
+    new_end = solution.point if solution.arc_endpoint == "end" else arc.end
+    new_mid = geo.arc_midpoint(
+        new_start, new_end, arc.support.center, original_clockwise
+    )
+    arc_item.SetStart(_vector(new_start))
+    arc_item.SetMid(_vector(new_mid))
+    arc_item.SetEnd(_vector(new_end))
 
     board.BuildConnectivity()
     pcbnew.Refresh()
@@ -400,3 +471,24 @@ class DrawTangentArcPlugin(_BasePlugin):
                     )
         finally:
             dialog.Destroy()
+
+
+class MakeLineTangentToArcPlugin(_BasePlugin):
+    def defaults(self):
+        super().defaults()
+        self.name = "Make Line Tangent to Arc"
+        self.description = (
+            "Move the nearest straight-track and arc endpoints into a smooth "
+            "tangent connection"
+        )
+        self._set_icon("make_line_tangent_to_arc.png")
+
+    def Run(self):
+        try:
+            make_line_tangent_to_arc()
+        except ConnectorError as exc:
+            wx.MessageBox(str(exc), self.name, wx.OK | wx.ICON_ERROR)
+        except Exception as exc:
+            wx.MessageBox(
+                f"Unexpected error:\n{exc}", self.name, wx.OK | wx.ICON_ERROR
+            )

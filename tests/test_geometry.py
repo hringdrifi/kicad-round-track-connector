@@ -18,6 +18,7 @@ from geometry import (
     fillet_midpoint,
     fillet_candidates,
     line_circle_intersections,
+    line_arc_tangent,
     line_line_intersections,
     point_on_arc,
     tangent_arc_from_line,
@@ -61,6 +62,30 @@ class GeometryTests(unittest.TestCase):
             tangent_points_from_point(Point(1, 0), Circle(Point(0, 0), 5)),
             [],
         )
+
+    def test_line_arc_tangent_moves_nearest_endpoint_pair(self):
+        solution = line_arc_tangent(
+            Line(Point(10, 10), Point(20, 10)),
+            Circle(Point(0, 0), 5),
+            Point(5, 0),
+            Point(0, 5),
+        )
+        self.assertIsNotNone(solution)
+        self.assertEqual(solution.line_endpoint, "start")
+        self.assertEqual(solution.arc_endpoint, "start")
+        self.assertAlmostEqual(solution.point.length(), 5)
+        self.assertAlmostEqual(
+            (solution.point - Point(20, 10)).dot(solution.point), 0
+        )
+
+    def test_line_arc_tangent_fails_when_fixed_line_end_is_inside_circle(self):
+        solution = line_arc_tangent(
+            Line(Point(5.1, 0), Point(1, 0)),
+            Circle(Point(0, 0), 5),
+            Point(5, 0),
+            Point(0, 5),
+        )
+        self.assertIsNone(solution)
 
     def test_point_on_arc_uses_midpoint_to_select_sweep(self):
         center = Point(0, 0)

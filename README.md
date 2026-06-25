@@ -12,6 +12,9 @@ or trims/extends them and inserts a tangent arc of a specified radius.
   signed angle in degrees. Select one straight track; its nearest endpoint is
   moved to the tangent point and an arc with the same net, layer, and width is
   added. Positive angles are counterclockwise and negative angles are clockwise.
+- **Make Line Tangent to Arc** moves the nearest endpoints of one selected
+  straight track and one selected arc to a shared tangent point. The arc keeps
+  its original center, radius, and sweep direction.
 
 Straight-to-straight, straight-to-arc, and arc-to-arc combinations are
 supported. The selected items must be on the same copper layer. Different nets

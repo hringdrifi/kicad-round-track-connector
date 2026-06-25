@@ -76,6 +76,14 @@ class TangentArc:
     radius: float
 
 
+@dataclass(frozen=True)
+class LineArcTangent:
+    point: Point
+    line_endpoint: str
+    arc_endpoint: str
+    score: float
+
+
 def distance(a: Point, b: Point) -> float:
     return (a - b).length()
 
@@ -128,6 +136,45 @@ def tangent_points_from_point(point: Point, circle: Circle) -> list[Point]:
     ) / distance_squared
     offset = relative.left() * offset_scale
     return [base + offset, base - offset]
+
+
+def line_arc_tangent(
+    line: Line,
+    circle: Circle,
+    arc_start: Point,
+    arc_end: Point,
+) -> LineArcTangent | None:
+    """Move the nearest line/arc endpoint pair to a common tangent point."""
+    endpoint_pairs = [
+        (distance(line.start, arc_start), "start", "start"),
+        (distance(line.start, arc_end), "start", "end"),
+        (distance(line.end, arc_start), "end", "start"),
+        (distance(line.end, arc_end), "end", "end"),
+    ]
+    _, line_endpoint, arc_endpoint = min(endpoint_pairs, key=lambda item: item[0])
+    fixed_line_point = line.end if line_endpoint == "start" else line.start
+    original_line_point = line.start if line_endpoint == "start" else line.end
+    original_arc_point = arc_start if arc_endpoint == "start" else arc_end
+
+    candidates = tangent_points_from_point(fixed_line_point, circle)
+    if not candidates:
+        return None
+    point = min(
+        candidates,
+        key=lambda candidate: (
+            distance(original_line_point, candidate)
+            + distance(original_arc_point, candidate)
+        ),
+    )
+    return LineArcTangent(
+        point=point,
+        line_endpoint=line_endpoint,
+        arc_endpoint=arc_endpoint,
+        score=(
+            distance(original_line_point, point)
+            + distance(original_arc_point, point)
+        ),
+    )
 
 
 def point_on_arc(
