@@ -61,7 +61,7 @@ def _track_geometry(item) -> TrackGeometry:
     return TrackGeometry(item, geo.Line(start, end), start, end)
 
 
-def _selected_tracks(board) -> list:
+def _selected_tracks(board, require_same_layer: bool = True) -> list:
     tracks = [
         item
         for item in board.GetTracks()
@@ -71,7 +71,7 @@ def _selected_tracks(board) -> list:
     ]
     if len(tracks) != 2:
         raise ConnectorError("Select exactly two track segments or track arcs.")
-    if tracks[0].GetLayer() != tracks[1].GetLayer():
+    if require_same_layer and tracks[0].GetLayer() != tracks[1].GetLayer():
         raise ConnectorError("The selected tracks must be on the same copper layer.")
     return tracks
 
@@ -122,6 +122,17 @@ def _set_endpoint(track: TrackGeometry, target: geo.Point) -> None:
         track.item.SetEnd(_vector(target))
 
 
+def _add_layer_change_via(board, point: geo.Point, from_item, to_item) -> None:
+    settings = board.GetDesignSettings()
+    via = pcbnew.PCB_VIA(board)
+    via.SetPosition(_vector(point))
+    via.SetLayerPair(from_item.GetLayer(), to_item.GetLayer())
+    via.SetWidth(settings.GetCurrentViaSize())
+    via.SetDrill(settings.GetCurrentViaDrill())
+    via.SetNetCode(from_item.GetNetCode())
+    board.Add(via)
+
+
 def _retained_direction(track: TrackGeometry, tangent: geo.Point) -> geo.Point:
     moved = _endpoint_to_move(track, tangent)
     other = track.end if moved == "start" else track.start
@@ -139,7 +150,7 @@ def connect_selected(radius_mm: float | None = None) -> None:
     board = pcbnew.GetBoard()
     if board is None:
         raise ConnectorError("No board is open.")
-    items = _selected_tracks(board)
+    items = _selected_tracks(board, require_same_layer=radius_mm is not None)
     a, b = (_track_geometry(item) for item in items)
 
     if radius_mm is None:
@@ -150,6 +161,8 @@ def connect_selected(radius_mm: float | None = None) -> None:
             raise ConnectorError("The selected tracks do not have an intersection.")
         _set_endpoint(a, point)
         _set_endpoint(b, point)
+        if items[0].GetLayer() != items[1].GetLayer():
+            _add_layer_change_via(board, point, items[0], items[1])
     else:
         radius = float(pcbnew.FromMM(radius_mm))
         solutions = geo.fillet_candidates(a.support, b.support, a, b, radius)
