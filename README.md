@@ -5,9 +5,12 @@ or trims/extends them and inserts a tangent arc of a specified radius.
 
 ## Actions
 
-- **Connect Tracks** — immediately connects the two selected items.
+- **Connect Tracks** — immediately connects the two selected items. If the
+  selected items are on different copper layers, a through via is added at the
+  connection point using KiCad's current via size and drill settings.
 - **Connect Tracks with Radius** — asks for a radius in millimeters. The last
-  entered value is remembered.
+  entered value is remembered. The selected items must be on the same copper
+  layer.
 - **Draw Tangent Arc** asks for a center X/Y coordinate in millimeters and a
   signed angle in degrees. Select one straight track; its nearest endpoint is
   moved to the tangent point and an arc with the same net, layer, and width is
@@ -17,8 +20,8 @@ or trims/extends them and inserts a tangent arc of a specified radius.
   its original center, radius, and sweep direction.
 
 Straight-to-straight, straight-to-arc, and arc-to-arc combinations are
-supported. The selected items must be on the same copper layer. Different nets
-are allowed; a generated fillet arc inherits the first selected item's net.
+supported. Different nets are allowed; a generated fillet arc inherits the first
+selected item's net.
 
 ## Install on Windows
 
