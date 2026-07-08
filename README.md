@@ -23,6 +23,9 @@ Straight-to-straight, straight-to-arc, and arc-to-arc combinations are
 supported. Different nets are allowed; a generated fillet arc inherits the first
 selected item's net.
 
+Numeric text fields accept arithmetic expressions using `+`, `-`, `*`, `/`, and
+parentheses, such as `2.54/2` or `(1.0 + 0.5) * 2`.
+
 ## Install on Windows
 
 Copy the `round_track_connector` directory into:

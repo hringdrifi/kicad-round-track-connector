@@ -8,6 +8,7 @@ import pcbnew
 import wx
 
 from . import geometry as geo
+from .numeric_expression import NumericExpressionError, evaluate_numeric_expression
 
 
 class ConnectorError(RuntimeError):
@@ -326,9 +327,9 @@ class RadiusDialog(wx.Dialog):
 
     def get_radius(self) -> float:
         try:
-            value = float(self.radius.GetValue())
-        except ValueError as exc:
-            raise ConnectorError("Radius must be a number.") from exc
+            value = evaluate_numeric_expression(self.radius.GetValue())
+        except NumericExpressionError as exc:
+            raise ConnectorError("Radius must be a number or arithmetic expression.") from exc
         if value <= 0:
             raise ConnectorError("Radius must be greater than zero.")
         wx.Config("RoundTrackConnector").Write("radius_mm", self.radius.GetValue())
@@ -389,13 +390,13 @@ class TangentArcDialog(wx.Dialog):
     def get_values(self) -> tuple[float, float, float]:
         try:
             values = (
-                float(self.center_x.GetValue()),
-                float(self.center_y.GetValue()),
-                float(self.angle.GetValue()),
+                evaluate_numeric_expression(self.center_x.GetValue()),
+                evaluate_numeric_expression(self.center_y.GetValue()),
+                evaluate_numeric_expression(self.angle.GetValue()),
             )
-        except ValueError as exc:
+        except NumericExpressionError as exc:
             raise ConnectorError(
-                "Center coordinates and angle must be numbers."
+                "Center coordinates and angle must be numbers or arithmetic expressions."
             ) from exc
 
         if abs(values[2]) < geo.EPS or abs(values[2]) >= 360.0:
