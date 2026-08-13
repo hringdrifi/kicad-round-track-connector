@@ -179,9 +179,14 @@ def connect_selected(radius_mm: float | None = None) -> None:
             candidate_direction_b = _retained_direction(
                 b, candidate.tangent_b
             )
-            continuity, _ = geo.fillet_continuity_score(
+            continuity = geo.fillet_short_arc_continuity_score(
                 candidate, candidate_direction_a, candidate_direction_b
             )
+            # The plugin always draws the minor arc. A non-positive score for
+            # that specific sweep means a selected track would turn back on
+            # itself, regardless of how attractive the radius looks.
+            if continuity <= geo.EPS:
+                continue
             ranked.append(
                 (
                     geo.fillet_minor_sweep(candidate),
@@ -191,6 +196,10 @@ def connect_selected(radius_mm: float | None = None) -> None:
                     candidate_direction_a,
                     candidate_direction_b,
                 )
+            )
+        if not ranked:
+            raise ConnectorError(
+                "No tangent connection exists without folding back a track."
             )
         _, _, _, fillet, direction_a, direction_b = min(
             ranked, key=lambda entry: (entry[0], entry[1], entry[2])

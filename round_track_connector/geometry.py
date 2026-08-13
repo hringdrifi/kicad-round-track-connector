@@ -360,6 +360,27 @@ def fillet_continuity_score(
     )
 
 
+def fillet_short_arc_continuity_score(
+    fillet: Fillet,
+    retained_direction_a: Point,
+    retained_direction_b: Point,
+) -> float:
+    """Return tangent continuity for the minor arc that will be drawn."""
+    radial_a = (fillet.tangent_a - fillet.center).normalized()
+    radial_b = (fillet.tangent_b - fillet.center).normalized()
+    start_angle = math.atan2(radial_a.y, radial_a.x)
+    end_angle = math.atan2(radial_b.y, radial_b.x)
+    use_ccw = (end_angle - start_angle) % TAU <= math.pi + EPS
+    tangent_a = radial_a.left()
+    tangent_b = radial_b.left()
+    if not use_ccw:
+        tangent_a = tangent_a * -1.0
+        tangent_b = tangent_b * -1.0
+    return tangent_a.dot(retained_direction_a.normalized() * -1.0) + (
+        tangent_b.dot(retained_direction_b.normalized())
+    )
+
+
 def fillet_minor_sweep(fillet: Fillet) -> float:
     """Return the smaller angle between a fillet's two tangent radii."""
     start_angle = math.atan2(

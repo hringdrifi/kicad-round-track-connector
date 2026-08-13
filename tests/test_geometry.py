@@ -15,6 +15,7 @@ from geometry import (
     distance_to_arc,
     Fillet,
     fillet_continuity_score,
+    fillet_short_arc_continuity_score,
     fillet_minor_sweep,
     fillet_midpoint,
     fillet_candidates,
@@ -222,6 +223,26 @@ class GeometryTests(unittest.TestCase):
             foldback, retained_a, retained_b
         )
         self.assertGreater(smooth_score, foldback_score)
+
+    def test_short_arc_continuity_rejects_a_long_arc_only_solution(self):
+        fillet = Fillet(
+            center=Point(0, 0),
+            tangent_a=Point(1, 0),
+            tangent_b=Point(0, 1),
+            radius=1,
+            score=0,
+        )
+        best_score, use_ccw = fillet_continuity_score(
+            fillet, Point(0, 1), Point(1, 0)
+        )
+        self.assertFalse(use_ccw)
+        self.assertGreater(best_score, 0)
+        self.assertLess(
+            fillet_short_arc_continuity_score(
+                fillet, Point(0, 1), Point(1, 0)
+            ),
+            0,
+        )
 
     def test_tangent_arc_projects_center_to_line(self):
         arc = tangent_arc_from_line(
