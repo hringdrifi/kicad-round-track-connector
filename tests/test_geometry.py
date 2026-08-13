@@ -11,6 +11,8 @@ from geometry import (
     Circle,
     Line,
     Point,
+    arc_sweep,
+    arc_sweep_change,
     circle_circle_intersections,
     distance_to_arc,
     Fillet,
@@ -121,6 +123,46 @@ class GeometryTests(unittest.TestCase):
                 Point(-5, 0),
             ),
             3,
+        )
+
+    def test_arc_sweep_change_measures_endpoint_extension(self):
+        start = Point(1, 0)
+        mid = Point(0, 1)
+        end = Point(-1, 0)
+        center = Point(0, 0)
+        self.assertAlmostEqual(arc_sweep(start, mid, end, center), math.pi)
+        self.assertAlmostEqual(
+            arc_sweep_change(
+                start,
+                mid,
+                end,
+                center,
+                Point(math.sqrt(0.5), math.sqrt(0.5)),
+                "start",
+            ),
+            math.pi / 4,
+        )
+        self.assertAlmostEqual(
+            arc_sweep_change(
+                start,
+                mid,
+                end,
+                center,
+                Point(0, -1),
+                "start",
+            ),
+            math.pi / 2,
+        )
+        self.assertAlmostEqual(
+            arc_sweep_change(
+                start,
+                Point(0, -1),
+                end,
+                center,
+                Point(math.sqrt(0.5), -math.sqrt(0.5)),
+                "start",
+            ),
+            math.pi / 4,
         )
 
     def test_circle_circle(self):

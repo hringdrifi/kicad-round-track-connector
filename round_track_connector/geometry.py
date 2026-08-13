@@ -202,6 +202,50 @@ def point_on_arc(
     return (start_angle - point_angle) % TAU <= clockwise_sweep + EPS
 
 
+def arc_sweep(start: Point, mid: Point, end: Point, center: Point) -> float:
+    """Return an arc's directed sweep angle in the range (0, 2π)."""
+    def angle(value: Point) -> float:
+        return math.atan2(value.y - center.y, value.x - center.x) % TAU
+
+    start_angle = angle(start)
+    mid_angle = angle(mid)
+    end_angle = angle(end)
+    ccw_sweep = (end_angle - start_angle) % TAU
+    if (mid_angle - start_angle) % TAU <= ccw_sweep + EPS:
+        return ccw_sweep
+    return TAU - ccw_sweep
+
+
+def arc_sweep_change(
+    start: Point,
+    mid: Point,
+    end: Point,
+    center: Point,
+    point: Point,
+    endpoint: str,
+) -> float:
+    """Return the sweep-angle change from moving one endpoint to *point*."""
+    def angle(value: Point) -> float:
+        return math.atan2(value.y - center.y, value.x - center.x) % TAU
+
+    original_start_angle = angle(start)
+    original_mid_angle = angle(mid)
+    original_end_angle = angle(end)
+    original_ccw_sweep = (original_end_angle - original_start_angle) % TAU
+    clockwise = (
+        (original_mid_angle - original_start_angle) % TAU
+        > original_ccw_sweep + EPS
+    )
+    original_sweep = (
+        TAU - original_ccw_sweep if clockwise else original_ccw_sweep
+    )
+    start_angle = angle(point if endpoint == "start" else start)
+    end_angle = angle(point if endpoint == "end" else end)
+    new_ccw_sweep = (end_angle - start_angle) % TAU
+    new_sweep = TAU - new_ccw_sweep if clockwise else new_ccw_sweep
+    return abs(new_sweep - original_sweep)
+
+
 def distance_to_arc(
     point: Point,
     circle: Circle,

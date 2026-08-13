@@ -15,6 +15,9 @@ class ConnectorError(RuntimeError):
     pass
 
 
+MAX_ARC_SWEEP_CHANGE = geo.TAU / 4.0
+
+
 def _read_setting(config, key: str, default: str) -> str:
     legacy = wx.Config("TrackConnector")
     return config.Read(key, legacy.Read(key, default))
@@ -147,6 +150,21 @@ def _retained_direction(track: TrackGeometry, tangent: geo.Point) -> geo.Point:
     return candidate
 
 
+def _arc_sweep_change_exceeds_limit(
+    track: TrackGeometry, tangent: geo.Point
+) -> bool:
+    if not isinstance(track.support, geo.Circle):
+        return False
+    return geo.arc_sweep_change(
+        track.start,
+        track.mid,
+        track.end,
+        track.support.center,
+        tangent,
+        _endpoint_to_move(track, tangent),
+    ) > MAX_ARC_SWEEP_CHANGE + geo.EPS
+
+
 def connect_selected(radius_mm: float | None = None) -> None:
     board = pcbnew.GetBoard()
     if board is None:
@@ -173,6 +191,10 @@ def connect_selected(radius_mm: float | None = None) -> None:
             )
         ranked = []
         for candidate in solutions:
+            if _arc_sweep_change_exceeds_limit(
+                a, candidate.tangent_a
+            ) or _arc_sweep_change_exceeds_limit(b, candidate.tangent_b):
+                continue
             candidate_direction_a = _retained_direction(
                 a, candidate.tangent_a
             )
@@ -199,7 +221,7 @@ def connect_selected(radius_mm: float | None = None) -> None:
             )
         if not ranked:
             raise ConnectorError(
-                "No tangent connection exists without folding back a track."
+                "No tangent connection exists within the selected arc's sweep limit."
             )
         _, _, _, fillet, direction_a, direction_b = min(
             ranked, key=lambda entry: (entry[0], entry[1], entry[2])
