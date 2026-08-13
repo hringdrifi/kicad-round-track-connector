@@ -15,6 +15,7 @@ from geometry import (
     distance_to_arc,
     Fillet,
     fillet_continuity_score,
+    fillet_minor_sweep,
     fillet_midpoint,
     fillet_candidates,
     line_circle_intersections,
@@ -171,7 +172,7 @@ class GeometryTests(unittest.TestCase):
         root_half = math.sqrt(0.5)
         self.assertPointAlmostEqual(midpoint, Point(root_half, -root_half))
 
-    def test_fillet_midpoint_uses_long_arc_when_smoothness_requires_it(self):
+    def test_fillet_midpoint_prefers_short_arc_over_smoothness(self):
         fillet = Fillet(
             center=Point(0, 0),
             tangent_a=Point(1, 0),
@@ -185,7 +186,17 @@ class GeometryTests(unittest.TestCase):
             retained_direction_b=Point(1, 0),
         )
         root_half = math.sqrt(0.5)
-        self.assertPointAlmostEqual(midpoint, Point(-root_half, root_half))
+        self.assertPointAlmostEqual(midpoint, Point(root_half, -root_half))
+
+    def test_fillet_minor_sweep_returns_smaller_angle(self):
+        fillet = Fillet(
+            center=Point(0, 0),
+            tangent_a=Point(1, 0),
+            tangent_b=Point(0, -1),
+            radius=1,
+            score=0,
+        )
+        self.assertAlmostEqual(fillet_minor_sweep(fillet), math.pi / 2)
 
     def test_continuity_score_rejects_foldback_candidate(self):
         smooth = Fillet(

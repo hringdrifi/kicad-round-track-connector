@@ -184,6 +184,7 @@ def connect_selected(radius_mm: float | None = None) -> None:
             )
             ranked.append(
                 (
+                    geo.fillet_minor_sweep(candidate),
                     -continuity,
                     candidate.score,
                     candidate,
@@ -191,8 +192,8 @@ def connect_selected(radius_mm: float | None = None) -> None:
                     candidate_direction_b,
                 )
             )
-        _, _, fillet, direction_a, direction_b = min(
-            ranked, key=lambda entry: (entry[0], entry[1])
+        _, _, _, fillet, direction_a, direction_b = min(
+            ranked, key=lambda entry: (entry[0], entry[1], entry[2])
         )
         _set_endpoint(a, fillet.tangent_a)
         _set_endpoint(b, fillet.tangent_b)

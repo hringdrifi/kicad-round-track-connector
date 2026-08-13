@@ -360,12 +360,8 @@ def fillet_continuity_score(
     )
 
 
-def fillet_midpoint(
-    fillet: Fillet,
-    retained_direction_a: Point,
-    retained_direction_b: Point,
-) -> Point:
-    """Return the midpoint of the arc that joins both retained curves smoothly."""
+def fillet_minor_sweep(fillet: Fillet) -> float:
+    """Return the smaller angle between a fillet's two tangent radii."""
     start_angle = math.atan2(
         fillet.tangent_a.y - fillet.center.y,
         fillet.tangent_a.x - fillet.center.x,
@@ -374,12 +370,38 @@ def fillet_midpoint(
         fillet.tangent_b.y - fillet.center.y,
         fillet.tangent_b.x - fillet.center.x,
     )
-    _, use_ccw = fillet_continuity_score(
-        fillet, retained_direction_a, retained_direction_b
+    return min((end_angle - start_angle) % TAU, (start_angle - end_angle) % TAU)
+
+
+def fillet_midpoint(
+    fillet: Fillet,
+    retained_direction_a: Point,
+    retained_direction_b: Point,
+) -> Point:
+    """Return the midpoint of the shortest arc between the tangent points.
+
+    For a semicircle, both sweeps have the same angle, so use tangent
+    continuity as the tie breaker.
+    """
+    start_angle = math.atan2(
+        fillet.tangent_a.y - fillet.center.y,
+        fillet.tangent_a.x - fillet.center.x,
+    )
+    end_angle = math.atan2(
+        fillet.tangent_b.y - fillet.center.y,
+        fillet.tangent_b.x - fillet.center.x,
     )
     ccw_sweep = (end_angle - start_angle) % TAU
     clockwise_sweep = -((start_angle - end_angle) % TAU)
-    sweep = ccw_sweep if use_ccw else clockwise_sweep
+    if ccw_sweep < -clockwise_sweep - EPS:
+        sweep = ccw_sweep
+    elif -clockwise_sweep < ccw_sweep - EPS:
+        sweep = clockwise_sweep
+    else:
+        _, use_ccw = fillet_continuity_score(
+            fillet, retained_direction_a, retained_direction_b
+        )
+        sweep = ccw_sweep if use_ccw else clockwise_sweep
     midpoint_angle = start_angle + sweep / 2.0
     return Point(
         fillet.center.x + fillet.radius * math.cos(midpoint_angle),
