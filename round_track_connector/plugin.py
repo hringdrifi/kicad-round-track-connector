@@ -119,8 +119,8 @@ def _endpoint_to_move(track: TrackGeometry, target: geo.Point) -> str:
     return "start" if geo.distance(track.start, target) <= geo.distance(track.end, target) else "end"
 
 
-def _set_endpoint(track: TrackGeometry, target: geo.Point) -> None:
-    if _endpoint_to_move(track, target) == "start":
+def _set_endpoint(track: TrackGeometry, target: geo.Point, endpoint: str | None = None) -> None:
+    if (endpoint or _endpoint_to_move(track, target)) == "start":
         track.item.SetStart(_vector(target))
     else:
         track.item.SetEnd(_vector(target))
@@ -137,8 +137,10 @@ def _add_layer_change_via(board, point: geo.Point, from_item, to_item) -> None:
     board.Add(via)
 
 
-def _retained_direction(track: TrackGeometry, tangent: geo.Point) -> geo.Point:
-    moved = _endpoint_to_move(track, tangent)
+def _retained_direction(
+    track: TrackGeometry, tangent: geo.Point, endpoint: str | None = None
+) -> geo.Point:
+    moved = endpoint or _endpoint_to_move(track, tangent)
     other = track.end if moved == "start" else track.start
     if isinstance(track.support, geo.Line):
         return other - tangent
@@ -151,7 +153,7 @@ def _retained_direction(track: TrackGeometry, tangent: geo.Point) -> geo.Point:
 
 
 def _arc_sweep_change_exceeds_limit(
-    track: TrackGeometry, tangent: geo.Point
+    track: TrackGeometry, tangent: geo.Point, endpoint: str | None = None
 ) -> bool:
     if not isinstance(track.support, geo.Circle):
         return False
@@ -161,7 +163,7 @@ def _arc_sweep_change_exceeds_limit(
         track.end,
         track.support.center,
         tangent,
-        _endpoint_to_move(track, tangent),
+        endpoint or _endpoint_to_move(track, tangent),
     ) > MAX_ARC_SWEEP_CHANGE + geo.EPS
 
 
@@ -189,17 +191,23 @@ def connect_selected(radius_mm: float | None = None) -> None:
             raise ConnectorError(
                 "No tangent connection exists for the specified radius."
             )
+        # Keep the connection-side endpoints fixed across candidates. A large
+        # fillet can put its tangent nearer the opposite (retained) endpoint.
+        endpoint_a, endpoint_b = min(
+            ((ea, eb) for ea in ("start", "end") for eb in ("start", "end")),
+            key=lambda pair: geo.distance(getattr(a, pair[0]), getattr(b, pair[1])),
+        )
         ranked = []
         for candidate in solutions:
             if _arc_sweep_change_exceeds_limit(
-                a, candidate.tangent_a
-            ) or _arc_sweep_change_exceeds_limit(b, candidate.tangent_b):
+                a, candidate.tangent_a, endpoint_a
+            ) or _arc_sweep_change_exceeds_limit(b, candidate.tangent_b, endpoint_b):
                 continue
             candidate_direction_a = _retained_direction(
-                a, candidate.tangent_a
+                a, candidate.tangent_a, endpoint_a
             )
             candidate_direction_b = _retained_direction(
-                b, candidate.tangent_b
+                b, candidate.tangent_b, endpoint_b
             )
             continuity = geo.fillet_short_arc_continuity_score(
                 candidate, candidate_direction_a, candidate_direction_b
@@ -226,8 +234,8 @@ def connect_selected(radius_mm: float | None = None) -> None:
         _, _, _, fillet, direction_a, direction_b = min(
             ranked, key=lambda entry: (entry[0], entry[1], entry[2])
         )
-        _set_endpoint(a, fillet.tangent_a)
-        _set_endpoint(b, fillet.tangent_b)
+        _set_endpoint(a, fillet.tangent_a, endpoint_a)
+        _set_endpoint(b, fillet.tangent_b, endpoint_b)
 
         arc = pcbnew.PCB_ARC(board)
         arc.SetStart(_vector(fillet.tangent_a))

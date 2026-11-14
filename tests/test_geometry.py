@@ -199,6 +199,26 @@ class GeometryTests(unittest.TestCase):
             )
         )
 
+    def test_line_circle_fillet_can_enclose_supporting_circle(self):
+        line = Line(Point(-5, 2), Point(5, 2))
+        circle = Circle(Point(0, 0), 1)
+        candidates = fillet_candidates(line, circle, line, line, 2)
+        enclosing = [
+            candidate for candidate in candidates
+            if math.isclose(candidate.center.length(), 1, abs_tol=1e-6)
+        ]
+        self.assertEqual(len(enclosing), 2)
+        for candidate in enclosing:
+            self.assertPointAlmostEqual(
+                candidate.tangent_b, candidate.center * -1
+            )
+            self.assertAlmostEqual(
+                (candidate.tangent_b - candidate.center).length(), 2
+            )
+            self.assertAlmostEqual(
+                (candidate.tangent_a - candidate.center).length(), 2
+            )
+
     def test_fillet_midpoint_uses_smooth_direction(self):
         fillet = Fillet(
             center=Point(0, 0),

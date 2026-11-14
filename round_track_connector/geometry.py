@@ -321,16 +321,16 @@ def _offset_loci(support: Line | Circle, radius: float) -> list[Line | Circle]:
     return [Circle(support.center, value) for value in radii if value > EPS]
 
 
-def _tangent_point(support: Line | Circle, center: Point) -> Point:
+def _tangent_point(support: Line | Circle, center: Point, radius: float) -> Point:
     if isinstance(support, Line):
         direction = (support.end - support.start).normalized()
         return support.start + direction * (center - support.start).dot(direction)
     radial = (center - support.center).normalized()
     toward = support.center + radial * support.radius
     away = support.center - radial * support.radius
-    # The correct side is the point whose distance from the candidate fillet
-    # center matches the requested fillet radius. The caller validates it.
-    return toward if distance(center, toward) <= distance(center, away) else away
+    # An enclosing fillet touches the far side of the supporting circle.
+    # Choose by the requested radius, rather than the nearest point.
+    return min((toward, away), key=lambda point: abs(distance(center, point) - radius))
 
 
 def fillet_candidates(
@@ -347,8 +347,8 @@ def fillet_candidates(
         for locus_b in _offset_loci(b, radius):
             for center in intersections(locus_a, locus_b):
                 try:
-                    tangent_a = _tangent_point(a, center)
-                    tangent_b = _tangent_point(b, center)
+                    tangent_a = _tangent_point(a, center, radius)
+                    tangent_b = _tangent_point(b, center, radius)
                 except ValueError:
                     continue
                 actual_a = distance(center, tangent_a)
