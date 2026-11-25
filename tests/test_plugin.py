@@ -23,12 +23,15 @@ if pcbnew is not None:
 
 @unittest.skipIf(pcbnew is None, "Requires KiCad's bundled Python")
 class FilletIntegrationTests(unittest.TestCase):
-    def make_board(self, reverse_a=False, reverse_b=False, swap=False):
+    def make_board(
+        self, reverse_a=False, reverse_b=False, swap=False, *, endpoints=None
+    ):
         board = pcbnew.BOARD()
-        endpoints = [
-            ((142.875, 83.34375), (143.271875, 83.34375)),
-            ((143.271875, 83.34375), (143.271875, 83.740625)),
-        ]
+        if endpoints is None:
+            endpoints = [
+                ((142.875, 83.34375), (143.271875, 83.34375)),
+                ((143.271875, 83.34375), (143.271875, 83.740625)),
+            ]
         tracks = []
         for points, reverse in zip(endpoints, (reverse_a, reverse_b)):
             start, end = points[::-1] if reverse else points
@@ -86,6 +89,45 @@ class FilletIntegrationTests(unittest.TestCase):
         with patch.object(pcbnew, "GetBoard", return_value=board), patch.object(pcbnew, "Refresh"):
             with self.assertRaises(plugin.ConnectorError):
                 plugin.connect_selected(0.4)
+        self.assertEqual([(tuple(t.GetStart()), tuple(t.GetEnd())) for t in tracks], original)
+        self.assertEqual(len(list(board.GetTracks())), 2)
+
+    def test_angle_dependent_fillet_uses_angle_and_shorter_track_length(self):
+        corner = (20, 20)
+        for far_b, expected_radius in (
+            ((16, 24), 0.335495),
+            ((20, 24), 1.0),
+            ((24, 24), 2.720777),
+            ((20, 20.4), 0.2),
+        ):
+            with self.subTest(far_b=far_b):
+                board, (a, b) = self.make_board(
+                    reverse_b=True,
+                    swap=True,
+                    endpoints=[((16, 20), corner), (corner, far_b)],
+                )
+                far_a, far_b_position = a.GetStart(), b.GetStart()
+                with patch.object(pcbnew, "GetBoard", return_value=board), patch.object(pcbnew, "Refresh"):
+                    plugin.connect_selected(1.0, angle_dependent=True)
+                arcs = [t for t in board.GetTracks() if isinstance(t, pcbnew.PCB_ARC)]
+                self.assertEqual(len(arcs), 1)
+                actual_radius = plugin._track_geometry(arcs[0]).support.radius
+                self.assertAlmostEqual(actual_radius, pcbnew.FromMM(expected_radius), delta=10)
+                self.assertEqual(a.GetStart(), far_a)
+                self.assertEqual(b.GetStart(), far_b_position)
+                self.assertEqual(
+                    {tuple(arcs[0].GetStart()), tuple(arcs[0].GetEnd())},
+                    {tuple(a.GetEnd()), tuple(b.GetEnd())},
+                )
+
+    def test_angle_dependent_fillet_rejects_tracks_without_shared_endpoint(self):
+        board, tracks = self.make_board(
+            endpoints=[((16, 20), (19, 20)), ((20, 21), (20, 24))],
+        )
+        original = [(tuple(t.GetStart()), tuple(t.GetEnd())) for t in tracks]
+        with patch.object(pcbnew, "GetBoard", return_value=board), patch.object(pcbnew, "Refresh"):
+            with self.assertRaisesRegex(plugin.ConnectorError, "sharing an endpoint"):
+                plugin.connect_selected(1.0, angle_dependent=True)
         self.assertEqual([(tuple(t.GetStart()), tuple(t.GetEnd())) for t in tracks], original)
         self.assertEqual(len(list(board.GetTracks())), 2)
 

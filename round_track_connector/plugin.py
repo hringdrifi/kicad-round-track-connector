@@ -167,7 +167,38 @@ def _arc_sweep_change_exceeds_limit(
     ) > MAX_ARC_SWEEP_CHANGE + geo.EPS
 
 
-def connect_selected(radius_mm: float | None = None) -> None:
+def _angle_dependent_radius(
+    a: TrackGeometry, b: TrackGeometry, endpoint_a: str, endpoint_b: str, radius: float
+) -> float:
+    corner = getattr(a, endpoint_a)
+    if (
+        not isinstance(a.support, geo.Line)
+        or not isinstance(b.support, geo.Line)
+        or corner != getattr(b, endpoint_b)
+    ):
+        raise ConnectorError(
+            "Angle-dependent radius requires two straight tracks sharing an endpoint."
+        )
+
+    ray_a = _retained_direction(a, corner, endpoint_a)
+    ray_b = _retained_direction(b, corner, endpoint_b)
+    shortest = min(ray_a.length(), ray_b.length())
+    half_angle = math.atan2(abs(ray_a.cross(ray_b)), ray_a.dot(ray_b)) / 2.0
+    if (
+        shortest < geo.EPS
+        or half_angle < geo.EPS
+        or half_angle > math.pi / 2.0 - 0.001
+    ):
+        raise ConnectorError("The selected tracks must form a non-straight corner.")
+
+    # Round Tracks native arcs use the input radius as the 90-degree reference.
+    setback = radius * (1.0 + math.sin(half_angle)) / (1.0 + math.sin(math.pi / 4.0))
+    return min(shortest / 2.0, setback) * math.tan(half_angle)
+
+
+def connect_selected(
+    radius_mm: float | None = None, *, angle_dependent: bool = False
+) -> None:
     board = pcbnew.GetBoard()
     if board is None:
         raise ConnectorError("No board is open.")
@@ -186,17 +217,19 @@ def connect_selected(radius_mm: float | None = None) -> None:
             _add_layer_change_via(board, point, items[0], items[1])
     else:
         radius = float(pcbnew.FromMM(radius_mm))
-        solutions = geo.fillet_candidates(a.support, b.support, a, b, radius)
-        if not solutions:
-            raise ConnectorError(
-                "No tangent connection exists for the specified radius."
-            )
         # Keep the connection-side endpoints fixed across candidates. A large
         # fillet can put its tangent nearer the opposite (retained) endpoint.
         endpoint_a, endpoint_b = min(
             ((ea, eb) for ea in ("start", "end") for eb in ("start", "end")),
             key=lambda pair: geo.distance(getattr(a, pair[0]), getattr(b, pair[1])),
         )
+        if angle_dependent:
+            radius = _angle_dependent_radius(a, b, endpoint_a, endpoint_b, radius)
+        solutions = geo.fillet_candidates(a.support, b.support, a, b, radius)
+        if not solutions:
+            raise ConnectorError(
+                "No tangent connection exists for the specified radius."
+            )
         ranked = []
         for candidate in solutions:
             if _arc_sweep_change_exceeds_limit(
@@ -234,15 +267,23 @@ def connect_selected(radius_mm: float | None = None) -> None:
         _, _, _, fillet, direction_a, direction_b = min(
             ranked, key=lambda entry: (entry[0], entry[1], entry[2])
         )
+        start = _vector(fillet.tangent_a)
+        mid = _vector(geo.fillet_midpoint(fillet, direction_a, direction_b))
+        end = _vector(fillet.tangent_b)
+        if angle_dependent and (
+            (mid.x - start.x) * (end.y - start.y)
+            == (mid.y - start.y) * (end.x - start.x)
+        ):
+            raise ConnectorError(
+                "The resulting arc is too small to draw at KiCad's coordinate precision."
+            )
         _set_endpoint(a, fillet.tangent_a, endpoint_a)
         _set_endpoint(b, fillet.tangent_b, endpoint_b)
 
         arc = pcbnew.PCB_ARC(board)
-        arc.SetStart(_vector(fillet.tangent_a))
-        arc.SetMid(
-            _vector(geo.fillet_midpoint(fillet, direction_a, direction_b))
-        )
-        arc.SetEnd(_vector(fillet.tangent_b))
+        arc.SetStart(start)
+        arc.SetMid(mid)
+        arc.SetEnd(end)
         arc.SetLayer(items[0].GetLayer())
         arc.SetWidth(items[0].GetWidth())
         arc.SetNetCode(items[0].GetNetCode())
@@ -354,6 +395,11 @@ class RadiusDialog(wx.Dialog):
         row.Add(self.radius, 1)
         row.Add(wx.StaticText(panel, label="mm"), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 6)
         outer.Add(row, 0, wx.EXPAND | wx.ALL, 12)
+        self.angle_dependent = wx.CheckBox(
+            panel, label="Angle-dependent radius (90-degree reference)"
+        )
+        self.angle_dependent.SetToolTip("Requires two straight tracks sharing an endpoint.")
+        outer.Add(self.angle_dependent, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         buttons = self.CreateButtonSizer(wx.OK | wx.CANCEL)
         self.FindWindowById(wx.ID_OK).SetLabel("Connect")
@@ -459,9 +505,9 @@ class _BasePlugin(pcbnew.ActionPlugin):
     def _set_icon(self, filename):
         self.icon_file_name = os.path.join(os.path.dirname(__file__), filename)
 
-    def _run(self, radius):
+    def _run(self, radius, *, angle_dependent=False):
         try:
-            connect_selected(radius)
+            connect_selected(radius, angle_dependent=angle_dependent)
         except ConnectorError as exc:
             wx.MessageBox(str(exc), self.name, wx.OK | wx.ICON_ERROR)
         except Exception as exc:
@@ -497,7 +543,7 @@ class ConnectTracksWithRadiusPlugin(_BasePlugin):
                 except ConnectorError as exc:
                     wx.MessageBox(str(exc), self.name, wx.OK | wx.ICON_ERROR)
                     return
-                self._run(radius)
+                self._run(radius, angle_dependent=dialog.angle_dependent.GetValue())
         finally:
             dialog.Destroy()
 
