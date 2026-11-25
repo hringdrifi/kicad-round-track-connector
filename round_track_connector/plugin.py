@@ -398,15 +398,16 @@ class RadiusDialog(wx.Dialog):
         self.angle_dependent = wx.CheckBox(
             panel, label="Angle-dependent radius (90-degree reference)"
         )
+        self.angle_dependent.SetValue(config.ReadBool("angle_dependent_radius", False))
         self.angle_dependent.SetToolTip("Requires two straight tracks sharing an endpoint.")
         outer.Add(self.angle_dependent, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         buttons = self.CreateButtonSizer(wx.OK | wx.CANCEL)
         self.FindWindowById(wx.ID_OK).SetLabel("Connect")
-        outer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
         panel.SetSizer(outer)
         top = wx.BoxSizer(wx.VERTICAL)
         top.Add(panel, 1, wx.EXPAND)
+        top.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
         self.SetSizerAndFit(top)
         self.radius.SetFocus()
         self.radius.SelectAll()
@@ -418,8 +419,10 @@ class RadiusDialog(wx.Dialog):
             raise ConnectorError("Radius must be a number or arithmetic expression.") from exc
         if value <= 0:
             raise ConnectorError("Radius must be greater than zero.")
-        wx.Config("RoundTrackConnector").Write("radius_mm", self.radius.GetValue())
-        wx.Config("RoundTrackConnector").Flush()
+        config = wx.Config("RoundTrackConnector")
+        config.Write("radius_mm", self.radius.GetValue())
+        config.WriteBool("angle_dependent_radius", self.angle_dependent.GetValue())
+        config.Flush()
         return value
 
 
