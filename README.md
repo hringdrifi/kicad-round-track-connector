@@ -10,11 +10,11 @@ or trims/extends them and inserts a tangent arc of a specified radius.
   connection point using KiCad's current via size and drill settings.
 - **Connect Tracks with Radius** — asks for a radius in millimeters. The last
   entered value is remembered. The selected items must be on the same copper
-  layer. Enable **Angle-dependent radius** for two straight tracks that share
-  an endpoint. In this mode, the input is the radius for a 90° corner with
-  enough track length. Sharper turns get a smaller radius and gentler turns
-  get a larger radius. Each track is trimmed by at most half the length of the
-  shorter track.
+  layer. Enable **Angle-dependent radius** for two straight tracks. The tracks
+  can be extended to find the corner. The input is the radius for a 90° corner
+  with enough track length. Sharper turns get a smaller radius and gentler turns
+  get a larger radius. The tangent points are placed at most halfway from
+  the corner to the closer of the two retained endpoints.
 - **Draw Tangent Arc** asks for a center X/Y coordinate in millimeters and a
   signed angle in degrees. Select one straight track; its nearest endpoint is
   moved to the tangent point and an arc with the same net, layer, and width is

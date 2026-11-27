@@ -120,13 +120,43 @@ class FilletIntegrationTests(unittest.TestCase):
                     {tuple(a.GetEnd()), tuple(b.GetEnd())},
                 )
 
-    def test_angle_dependent_fillet_rejects_tracks_without_shared_endpoint(self):
-        board, tracks = self.make_board(
+    def test_angle_dependent_fillet_connects_tracks_across_a_gap(self):
+        board, (a, b) = self.make_board(
             endpoints=[((16, 20), (19, 20)), ((20, 21), (20, 24))],
+        )
+        original_far_ends = a.GetStart(), b.GetEnd()
+        with patch.object(pcbnew, "GetBoard", return_value=board), patch.object(pcbnew, "Refresh"):
+            plugin.connect_selected(0.5, angle_dependent=True)
+        arcs = [t for t in board.GetTracks() if isinstance(t, pcbnew.PCB_ARC)]
+        self.assertEqual(len(arcs), 1)
+        self.assertEqual((a.GetStart(), b.GetEnd()), original_far_ends)
+        self.assertEqual(a.GetEnd(), pcbnew.VECTOR2I(pcbnew.FromMM(19.5), pcbnew.FromMM(20)))
+        self.assertEqual(b.GetStart(), pcbnew.VECTOR2I(pcbnew.FromMM(20), pcbnew.FromMM(20.5)))
+        self.assertEqual(
+            {tuple(arcs[0].GetStart()), tuple(arcs[0].GetEnd())},
+            {tuple(a.GetEnd()), tuple(b.GetStart())},
+        )
+
+    def test_angle_dependent_fillet_keeps_same_arc_when_corner_has_a_gap(self):
+        arcs = []
+        for end_a, start_b in (((20, 20), (20, 20)), ((18, 20), (20, 22.5))):
+            board, _ = self.make_board(
+                endpoints=[((16, 20), end_a), (start_b, (20, 24))],
+            )
+            with patch.object(pcbnew, "GetBoard", return_value=board), patch.object(pcbnew, "Refresh"):
+                plugin.connect_selected(1.5, angle_dependent=True)
+            arc = next(t for t in board.GetTracks() if isinstance(t, pcbnew.PCB_ARC))
+            arcs.append((tuple(arc.GetStart()), tuple(arc.GetMid()), tuple(arc.GetEnd())))
+        joined_arc, gapped_arc = arcs
+        self.assertEqual(joined_arc, gapped_arc)
+
+    def test_angle_dependent_fillet_rejects_parallel_tracks(self):
+        board, tracks = self.make_board(
+            endpoints=[((16, 20), (19, 20)), ((20, 21), (24, 21))],
         )
         original = [(tuple(t.GetStart()), tuple(t.GetEnd())) for t in tracks]
         with patch.object(pcbnew, "GetBoard", return_value=board), patch.object(pcbnew, "Refresh"):
-            with self.assertRaisesRegex(plugin.ConnectorError, "sharing an endpoint"):
+            with self.assertRaisesRegex(plugin.ConnectorError, "intersecting corner"):
                 plugin.connect_selected(1.0, angle_dependent=True)
         self.assertEqual([(tuple(t.GetStart()), tuple(t.GetEnd())) for t in tracks], original)
         self.assertEqual(len(list(board.GetTracks())), 2)

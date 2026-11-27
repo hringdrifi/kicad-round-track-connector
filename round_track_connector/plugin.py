@@ -167,21 +167,21 @@ def _arc_sweep_change_exceeds_limit(
     ) > MAX_ARC_SWEEP_CHANGE + geo.EPS
 
 
-def _angle_dependent_radius(
-    a: TrackGeometry, b: TrackGeometry, endpoint_a: str, endpoint_b: str, radius: float
-) -> float:
-    corner = getattr(a, endpoint_a)
-    if (
-        not isinstance(a.support, geo.Line)
-        or not isinstance(b.support, geo.Line)
-        or corner != getattr(b, endpoint_b)
-    ):
-        raise ConnectorError(
-            "Angle-dependent radius requires two straight tracks sharing an endpoint."
-        )
+def _angle_dependent_fillet_parameters(
+    a: TrackGeometry, b: TrackGeometry, radius: float
+) -> tuple[float, str, str]:
+    if not isinstance(a.support, geo.Line) or not isinstance(b.support, geo.Line):
+        raise ConnectorError("Angle-dependent radius requires two straight tracks.")
+    intersections = geo.line_line_intersections(a.support, b.support)
+    if not intersections:
+        raise ConnectorError("The selected tracks do not form an intersecting corner.")
 
+    corner = intersections[0]
+    endpoint_a = _endpoint_to_move(a, corner)
+    endpoint_b = _endpoint_to_move(b, corner)
     ray_a = _retained_direction(a, corner, endpoint_a)
     ray_b = _retained_direction(b, corner, endpoint_b)
+    # Measure from the corner so a gap does not change the length limit.
     shortest = min(ray_a.length(), ray_b.length())
     half_angle = math.atan2(abs(ray_a.cross(ray_b)), ray_a.dot(ray_b)) / 2.0
     if (
@@ -193,7 +193,7 @@ def _angle_dependent_radius(
 
     # Round Tracks native arcs use the input radius as the 90-degree reference.
     setback = radius * (1.0 + math.sin(half_angle)) / (1.0 + math.sin(math.pi / 4.0))
-    return min(shortest / 2.0, setback) * math.tan(half_angle)
+    return min(shortest / 2.0, setback) * math.tan(half_angle), endpoint_a, endpoint_b
 
 
 def connect_selected(
@@ -217,14 +217,17 @@ def connect_selected(
             _add_layer_change_via(board, point, items[0], items[1])
     else:
         radius = float(pcbnew.FromMM(radius_mm))
-        # Keep the connection-side endpoints fixed across candidates. A large
-        # fillet can put its tangent nearer the opposite (retained) endpoint.
-        endpoint_a, endpoint_b = min(
-            ((ea, eb) for ea in ("start", "end") for eb in ("start", "end")),
-            key=lambda pair: geo.distance(getattr(a, pair[0]), getattr(b, pair[1])),
-        )
         if angle_dependent:
-            radius = _angle_dependent_radius(a, b, endpoint_a, endpoint_b, radius)
+            radius, endpoint_a, endpoint_b = _angle_dependent_fillet_parameters(
+                a, b, radius
+            )
+        else:
+            # Keep the connection-side endpoints fixed across candidates. A large
+            # fillet can put its tangent nearer the opposite (retained) endpoint.
+            endpoint_a, endpoint_b = min(
+                ((ea, eb) for ea in ("start", "end") for eb in ("start", "end")),
+                key=lambda pair: geo.distance(getattr(a, pair[0]), getattr(b, pair[1])),
+            )
         solutions = geo.fillet_candidates(a.support, b.support, a, b, radius)
         if not solutions:
             raise ConnectorError(
@@ -399,7 +402,9 @@ class RadiusDialog(wx.Dialog):
             panel, label="Angle-dependent radius (90-degree reference)"
         )
         self.angle_dependent.SetValue(config.ReadBool("angle_dependent_radius", False))
-        self.angle_dependent.SetToolTip("Requires two straight tracks sharing an endpoint.")
+        self.angle_dependent.SetToolTip(
+            "Uses the intersection of two straight tracks, extended if needed."
+        )
         outer.Add(self.angle_dependent, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         buttons = self.CreateButtonSizer(wx.OK | wx.CANCEL)
